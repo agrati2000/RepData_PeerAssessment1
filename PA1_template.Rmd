@@ -8,18 +8,151 @@ output:
 
 ## Loading and preprocessing the data
 
-
+```{r loading, echo = TRUE}
+  library(tidyverse)
+  activity <- read_csv("activity.csv")
+  head(activity)
+```
 
 ## What is mean total number of steps taken per day?
 
+Calculate total number of steps per day
 
+```{r steps_per_day, echo = TRUE}
+steps_per_day <- with(activity, aggregate(steps, list(date), FUN = sum, na.rm = TRUE))
+head(steps_per_day)
+```
+
+Show a histogram
+
+```{r histogram_steps_per_day, echo = TRUE}
+hist(x = steps_per_day$x, main = "Histogram of Steps per Day", xlab = "Total number of Steps", ylab = "Frequency")
+
+abline(v = mean(steps_per_day$x),                       # Add line for mean
+       col = "red",
+       lwd = 3)
+text(x = mean(steps_per_day$x) / 2.2,                   # Add text for mean
+     y = 20 ,
+     paste("Mean = \n", mean(steps_per_day$x)),
+     col = "red",
+     cex = 1.5)
+```
+
+### Mean and median number of steps taken each day
+
+Mean (excluding missing values)
+
+```{r calc-mean-steps-per-day, echo = TRUE}
+mean(steps_per_day$x, na.rm = TRUE)
+```
+
+Median (excluding missing values)
+
+```{r calc-median-steps-per-day, echo = TRUE}
+median(steps_per_day$x, na.rm = TRUE)
+```
+
+### Which 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps?
+
+```{r, echo = TRUE}
+activity%>% group_by(interval) %>%
+    summarize(meanByInterval = mean(steps, na.rm = TRUE)) %>%
+    filter(meanByInterval == max(meanByInterval))
+```
 
 ## What is the average daily activity pattern?
 
+```{r average_daily_pattern, echo = TRUE}
+  stepsPerIntervalAvg <- aggregate(steps ~ interval, data = activity, FUN = mean, na.action = na.omit)
+colnames(stepsPerIntervalAvg) <- c("interval", "steps")
+ggplot(stepsPerIntervalAvg) + 
+  geom_line(aes(interval,steps)) +
+  ggtitle("Average daily Pattern - Steps per Interval")
+```
 
+
+
+One can clearly see that the Person sleeps in the morning, does the most activity on 09:00 AM, than has mixed activity until 19:00 PM and then the activity decreases steadily.
 
 ## Imputing missing values
 
+Let's see, which days are affected by "NA"s
 
+```{r steps_per_day_with_NA, echo = TRUE}
+steps_per_day <- with(activity, aggregate(steps, list(date), FUN = sum, na.rm = FALSE))
+head(steps_per_day)
+```
+
+
+```{r plot_na, echo = TRUE}
+par(mfrow=c(2,1))    # set the par-function for subplots
+plot(steps_per_day$x ~ steps_per_day$Group.1, xlab = "steps per day")
+barplot(is.na(steps_per_day$x), col = "red", ylab = "has NA")
+
+```
+
+So how many NA have we got?
+
+```{r, echo = TRUE}
+sum(is.na(activity$steps) == TRUE)
+```
+okay, enough to take care about.
+
+### actual imputation
+strategy: fill the void with the mean value in that 5-Minute-Timeframe
+
+```{r imputation, echo = TRUE}
+activity_imp <- activity # create new dataset
+for (i in stepsPerIntervalAvg$interval) {
+    activity_imp[activity_imp$interval == i & is.na(activity_imp$steps), ]$steps <- 
+        stepsPerIntervalAvg$steps[stepsPerIntervalAvg$interval == i]
+}
+head(activity_imp) # no NAs
+```
+### plot imputed data
+
+````{r plot imputed data, echo = TRUE}
+steps_per_day_imp <- with(activity_imp, aggregate(steps, list(date), FUN = sum, na.rm = TRUE))
+hist(x = steps_per_day_imp$x, main = "Histogram of Steps per Day Imputed", xlab = "Total number of Steps", ylab = "Frequency")
+
+abline(v = mean(steps_per_day_imp$x),                       # Add line for mean
+       col = "red",
+       lwd = 3)
+text(x = mean(steps_per_day_imp$x) / 2.2,                   # Add text for mean
+     y = 20 ,
+     paste("Mean = \n", mean(steps_per_day_imp$x)),
+     col = "red",
+     cex = 1.5)
+
+```
+Mean
+
+```{r, echo = TRUE}
+mean(steps_per_day_imp$x)
+```
+
+Median
+
+```{r, echo = TRUE}
+median(steps_per_day_imp$x)
+```
+Finding: Yes, that imputation strategy has a slight effect on the outcome.
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+firstly, we have to determine, which date is weekend and weekday.
+We can use the function `format(as.Date(df$date),"%w")` to do so. It return numbers from 0-6 for Monday to Sunday.
+
+```{r, determine_weekdays, echo = TRUE}
+activity %>% add_column(weekend = as.integer(format(as.Date(activity$date),"%w"))>=4) -> activity_weekdays
+ 
+stepsPerIntervalAvg_weekdays <- aggregate(steps ~ interval+ weekend, data = activity_weekdays, FUN = mean, na.action = na.omit)
+
+ggplot(stepsPerIntervalAvg_weekdays) + 
+  geom_line(aes(interval,steps, col = weekend)) +
+  ggtitle("Average daily Pattern - Steps per Interval")
+```
+
+
+One can clearly see that the person get up on weekdays earlier. Another finding is that the person does a Walk at 15:00 PM on Weekend.
+
